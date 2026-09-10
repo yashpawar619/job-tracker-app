@@ -1,0 +1,77 @@
+# ============================================================
+# Secrets — never commit
+# ============================================================
+# Nothing in this repo should ever hold a real credential. Secrets are
+# supplied at deploy time via environment variables (see README).
+*.env
+.env
+.env.*
+*-secret.yaml
+*-secrets.yaml
+secrets.yaml
+*.pem
+*.key
+*.p12
+*.jks
+sa-key*.json
+service-account*.json
+gcp-key*.json
+kubeconfig
+.kube/
+
+# Helm values overrides — likely to hold real credentials
+values-local.yaml
+values-secret*.yaml
+
+# ============================================================
+# Personal reference notes — self-study, not part of the project
+# ============================================================
+Readmetheory.md
+Readmeinfra.md
+01-helm-chart-basics.md
+02-service-and-configmap.md
+java-app-infra/Readmeinfra.md
+java-app-infra/DEPLOYMENT.md
+
+# ============================================================
+# Build output
+# ============================================================
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.jar
+!maven-wrapper.jar
+build/
+out/
+rendered.yaml
+
+# ============================================================
+# Editors and tooling
+# ============================================================
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+*~
+
+# GitHub Copilot App Modernization extension scratch files
+.github/modernize/
+
+# ============================================================
+# OS
+# ============================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================
+# Logs and temp
+# ============================================================
+*.log
+logs/
+tmp/
+temp/
