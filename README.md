@@ -41,15 +41,21 @@ job-tracker-app/
 │   └── docker-compose.yml        app + Postgres for local development
 │
 └── java-app-infra/
-    ├── helm/java-app/            Helm chart
+    ├── helm/java-app/            Helm chart — the working deployment path
     │   ├── values.yaml           all configuration
     │   └── templates/            app, Postgres, Service, Ingress, PDB, cert
-    └── scripts/                  PowerShell operational scripts
-        ├── build-and-push.ps1    build image → Artifact Registry
-        ├── create-cluster.ps1    provision GKE Autopilot cluster
-        ├── deploy.ps1            helm upgrade --install
-        └── teardown-cluster.ps1  delete everything, stop billing
+    ├── scripts/                  PowerShell operational scripts
+    │   ├── build-and-push.ps1    build image → Artifact Registry
+    │   ├── create-cluster.ps1    provision GKE Autopilot cluster
+    │   ├── deploy.ps1            helm upgrade --install
+    │   └── teardown-cluster.ps1  delete everything, stop billing
+    │
+    ├── gcp/                      placeholder scaffolding — all files empty
+    ├── k8s/                      placeholder scaffolding — all files empty
+    └── docs/                     placeholder scaffolding — all files empty
 ```
+
+Everything needed to deploy lives in `helm/` and `scripts/`. The `gcp/`, `k8s/` and `docs/` trees are empty placeholders for a future split between project-level GCP setup, cluster-level foundations, and operational docs — the GCP steps currently live in this README and the cluster-level pieces in the chart.
 
 ---
 
