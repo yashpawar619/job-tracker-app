@@ -1,0 +1,26 @@
+# ============================================================
+# postgres-service.yaml — Stable DNS name for the database
+# ============================================================
+# Headless (clusterIP: None) is the standard pairing for a
+# StatefulSet: DNS resolves straight to the pod IP rather than
+# load balancing, which is what a single-writer database wants.
+# Internal only -- never a LoadBalancer.
+# ============================================================
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "java-app.fullname" . }}-postgres
+  labels:
+    {{- include "java-app.postgresLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+  selector:
+    {{- include "java-app.postgresSelectorLabels" . | nindent 4 }}
+{{- end }}

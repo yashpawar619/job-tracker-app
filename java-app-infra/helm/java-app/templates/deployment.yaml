@@ -1,0 +1,144 @@
+# ============================================================
+# deployment.yaml — Spring Boot pod specification
+# ============================================================
+# Kubernetes Deployment that manages replicas of the Java app.
+# Docs: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "java-app.fullname" . }}
+  labels:
+    {{- include "java-app.labels" . | nindent 4 }}
+spec:
+  # Number of pods to keep running
+  replicas: {{ .Values.replicaCount }}
+
+  # Rolling update strategy — how to replace old pods with new ones
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # Max extra pods during update (1 above desired)
+      maxUnavailable: 0  # Zero downtime — never drop below desired count
+
+  # How Deployment finds pods it owns — MUST match template.metadata.labels
+  selector:
+    matchLabels:
+      {{- include "java-app.selectorLabels" . | nindent 6 }}
+
+  # Pod template — this is what each replica looks like
+  template:
+    metadata:
+      labels:
+        {{- include "java-app.labels" . | nindent 8 }}
+      annotations:
+        # Force pods to restart when ConfigMap changes
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+
+    spec:
+      # Give K8s 30s to gracefully shut down the pod (Spring Boot cleanup)
+      terminationGracePeriodSeconds: 30
+
+      {{- if .Values.postgres.enabled }}
+      # Block startup until Postgres accepts connections. Hikari is set to
+      # fail fast, so without this gate the app would crash-loop while the
+      # database finishes initialising on first boot.
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ .Values.postgres.image }}
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h {{ include "java-app.fullname" . }}-postgres -p 5432 -U {{ .Values.postgres.username }}; do
+                echo "waiting for postgres..."
+                sleep 2
+              done
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+      {{- end }}
+
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.port }}
+              protocol: TCP
+
+          # ----- Environment variables -----
+          # Secrets come from the Secret, not the ConfigMap. Anything added
+          # under .Values.env is appended after these.
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "java-app.fullname" . }}-secrets
+                  key: DB_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "java-app.fullname" . }}-secrets
+                  key: JWT_SECRET
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+
+          # Load environment variables from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: {{ include "java-app.fullname" . }}-config
+
+          # ----- Health Probes -----
+          # Startup probe — protects slow-starting apps.
+          # Runs first, disables liveness/readiness until it succeeds.
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            failureThreshold: 30    # 30 * 10s = 5 min max startup
+            periodSeconds: 10
+
+          # Liveness probe — if fails, K8s restarts the pod
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: 3
+            timeoutSeconds: 3
+
+          # Readiness probe — if fails, K8s stops sending traffic
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: 3
+            timeoutSeconds: 3
+
+          # ----- Resources -----
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          # ----- Security context (Autopilot requirement) -----
+          # Autopilot enforces non-root containers by default
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false   # Spring Boot needs /tmp writable
+            capabilities:
+              drop:
+                - ALL
+

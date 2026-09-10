@@ -1,0 +1,19 @@
+# ============================================================
+# configmap.yaml — Non-sensitive app configuration
+# ============================================================
+# Injected into pods as environment variables (see deployment.yaml envFrom).
+# NEVER store secrets here — ConfigMaps are plaintext.
+# Docs: https://kubernetes.io/docs/concepts/configuration/configmap/
+# ============================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "java-app.fullname" . }}-config
+  labels:
+    {{- include "java-app.labels" . | nindent 4 }}
+
+data:
+  {{- range $key, $value := .Values.config }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}

@@ -1,0 +1,100 @@
+# ============================================================
+# postgres-statefulset.yaml — In-cluster PostgreSQL
+# ============================================================
+# StatefulSet (not Deployment) because the database needs stable
+# storage: the volumeClaimTemplate below gives the pod a PVC that
+# survives restarts and reschedules.
+# ============================================================
+{{- if .Values.postgres.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "java-app.fullname" . }}-postgres
+  labels:
+    {{- include "java-app.postgresLabels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "java-app.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "java-app.postgresSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "java-app.postgresLabels" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.username | quote }}
+            # Same secret the app reads DB_PASSWORD from, so the two
+            # can never drift out of sync.
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "java-app.fullname" . }}-secrets
+                  key: DB_PASSWORD
+            # Keep the data directory one level below the mount point.
+            # A freshly formatted volume has a lost+found entry at its
+            # root, and initdb refuses to run in a non-empty directory.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgres.username | quote }}
+                - -d
+                - {{ .Values.postgres.database | quote }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgres.username | quote }}
+                - -d
+                - {{ .Values.postgres.database | quote }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+
+  # Creates a PersistentVolumeClaim per replica. Note: Helm does NOT
+  # delete these on uninstall, so data outlives the release. Remove them
+  # by hand with `kubectl delete pvc -n <ns> -l app.kubernetes.io/name=java-app`.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}
+{{- end }}

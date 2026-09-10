@@ -1,0 +1,39 @@
+{{- if .Values.ingress.enabled }}
+# ============================================================
+# backendconfig.yaml — Health check for the GCE Ingress backend
+# ============================================================
+# REQUIRED whenever ingress is enabled. Without it, the GCE load
+# balancer health-checks "/" on the backend. Spring Security sits in
+# front of "/" and answers 401/403, so every backend is marked
+# UNHEALTHY and the Ingress serves 502 to all traffic — with pods
+# that are Running and Ready the whole time.
+#
+# BackendConfig is a GKE CRD (cloud.google.com/v1). It exists only on
+# a GKE cluster, so `helm template` renders it fine but any cluster
+# without the CRD will reject it.
+#
+# Bound to the Service via the cloud.google.com/backend-config
+# annotation in service.yaml.
+# ============================================================
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ include "java-app.fullname" . }}
+  labels:
+    {{- include "java-app.labels" . | nindent 4 }}
+spec:
+  healthCheck:
+    type: HTTP
+    # Reuses the readiness probe path, so the load balancer and
+    # Kubernetes agree on what "healthy" means.
+    requestPath: {{ .Values.probes.readiness.path }}
+    # Container-native load balancing (NEG) sends health checks to the
+    # container port directly, not the Service port.
+    port: {{ .Values.app.port }}
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+  # Long enough for a slow request, short enough to release the backend.
+  timeoutSec: 30
+{{- end }}

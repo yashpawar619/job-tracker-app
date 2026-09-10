@@ -1,0 +1,21 @@
+apiVersion: v2
+name: java-app
+description: Spring Boot Java application deployed on GKE
+type: application
+
+# Chart version — increment when you change templates/values
+version: 0.1.0
+
+# App version — increment when your Java app changes
+appVersion: "1.0.0"
+
+# Optional but good practice
+maintainers:
+  - name: DevOps Team
+    email: devops@yourcompany.com
+
+# Keywords help discovery if published to a registry
+keywords:
+  - java
+  - spring-boot
+  - gke

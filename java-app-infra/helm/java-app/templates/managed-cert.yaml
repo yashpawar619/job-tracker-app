@@ -1,0 +1,34 @@
+{{- if .Values.managedCert.enabled }}
+# ============================================================
+# managed-cert.yaml — Google-managed TLS certificate
+# ============================================================
+# Google provisions and auto-renews the certificate. No cert-manager,
+# no ACME client, no private key to store.
+#
+# Preconditions — the cert stays in Provisioning / FailedNotVisible
+# until ALL of these hold:
+#   1. ingress.host is a domain you control
+#   2. an A record for it points at the Ingress static IP
+#   3. that DNS has propagated publicly
+# Provisioning then takes a further 15-60 minutes.
+#
+# There is no way to get a managed certificate for a bare IP address.
+#
+# ManagedCertificate is a GKE CRD (networking.gke.io/v1); it exists
+# only on a GKE cluster.
+# ============================================================
+{{- if not .Values.managedCert.domains }}
+{{- fail "managedCert.enabled=true requires at least one entry in managedCert.domains." }}
+{{- end }}
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ include "java-app.fullname" . }}-cert
+  labels:
+    {{- include "java-app.labels" . | nindent 4 }}
+spec:
+  # Each domain is validated independently. One unresolvable entry
+  # holds the whole certificate in a failed state.
+  domains:
+    {{- toYaml .Values.managedCert.domains | nindent 4 }}
+{{- end }}

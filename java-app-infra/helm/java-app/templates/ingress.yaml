@@ -1,0 +1,59 @@
+{{- if .Values.ingress.enabled }}
+# ============================================================
+# ingress.yaml — GCE HTTP(S) Load Balancer
+# ============================================================
+# An alternative front door to the LoadBalancer Service. Enabling
+# this while service.type is still LoadBalancer would provision TWO
+# billable load balancers for one app, so the guard below refuses it.
+#
+# Switch service.type to ClusterIP when enabling ingress.
+#
+# Requires a reserved GLOBAL static IP:
+#   gcloud compute addresses create java-app-ip --global
+#   gcloud compute addresses describe java-app-ip --global
+# ============================================================
+{{- if eq .Values.service.type "LoadBalancer" }}
+{{- fail "ingress.enabled=true with service.type=LoadBalancer would create two billable load balancers. Set service.type: ClusterIP — the Ingress becomes the public entry point." }}
+{{- end }}
+{{- if and .Values.managedCert.enabled (not .Values.ingress.host) }}
+{{- fail "managedCert.enabled=true requires ingress.host to be set. A certificate cannot be issued without a hostname." }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "java-app.fullname" . }}
+  labels:
+    {{- include "java-app.labels" . | nindent 4 }}
+  annotations:
+    # "gce" = external HTTP(S) LB. "gce-internal" would be VPC-only.
+    kubernetes.io/ingress.class: "gce"
+    {{- with .Values.ingress.staticIpName }}
+    # Without this the LB gets an ephemeral IP that changes on recreate,
+    # which breaks any DNS record pointing at it.
+    kubernetes.io/ingress.global-static-ip-name: {{ . | quote }}
+    {{- end }}
+    {{- if .Values.managedCert.enabled }}
+    networking.gke.io/managed-certificates: {{ include "java-app.fullname" . }}-cert
+    {{- end }}
+spec:
+  {{- if .Values.ingress.host }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.path }}
+            pathType: {{ .Values.ingress.pathType }}
+            backend:
+              service:
+                name: {{ include "java-app.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+  {{- else }}
+  # No hostname yet: send everything arriving on the IP to the app.
+  defaultBackend:
+    service:
+      name: {{ include "java-app.fullname" . }}
+      port:
+        number: {{ .Values.service.port }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "java-app.fullname" . }}
+  labels:
+    {{- include "java-app.labels" . | nindent 4 }}
+  annotations:
+    {{- if .Values.ingress.enabled }}
+    # Binds the BackendConfig health check to this Service. Without it the
+    # GCE LB probes "/" and every backend reports UNHEALTHY (502s).
+    cloud.google.com/backend-config: '{"default": "{{ include "java-app.fullname" . }}"}'
+    # Container-native load balancing: the LB targets pod IPs directly
+    # through a NEG instead of hopping via node ports.
+    cloud.google.com/neg: '{"ingress": true}'
+    {{- else }}
+    # Use GCP's newer Backend Service-based load balancer (better health checks,
+    # regional/global options, integrates with Cloud Armor later)
+    cloud.google.com/l4.rbs: "enabled"
+    {{- end }}
+
+spec:
+  type: {{ .Values.service.type}}
+
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+  
+  # Route traffic to pods with these labels — MUST match deployment's pod labels
+  selector:
+    {{- include "java-app.selectorLabels" . | nindent 4 }}
+  
+  #Route only to pods on the same node when possible (faster, keeps client IP)
+  # 'Cluster' = default, can hop nodes | 'Local' = stay on receiving node
+  externalTrafficPolicy: Cluster
+
+  # Session affinity — 'None' = round-robin | 'ClientIP' = stick to same pod
+  sessionAffinity: None

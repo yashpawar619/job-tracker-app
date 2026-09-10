@@ -1,0 +1,136 @@
+# ============================================================
+# values.yaml — Default configuration for java-app chart
+# ============================================================
+# Override these for different environments using:
+#   helm install ... --values values-prod.yaml
+#   helm install ... --set replicaCount=3
+# ============================================================
+
+# ----- Deployment settings -----
+replicaCount: 1
+
+image:
+  # ⚠️ Replace <PROJECT_ID> with your actual GCP project ID
+  # Format: <REGION>-docker.pkg.dev/<PROJECT_ID>/<REPO>/<IMAGE>
+  repository: asia-south1-docker.pkg.dev/java-app-prod/java-app-repo/java-app
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+# ----- In-cluster PostgreSQL -----
+# Runs as a StatefulSet with its own PersistentVolumeClaim, so data survives
+# pod restarts. Not managed: you own backups and version upgrades.
+postgres:
+  enabled: true
+  image: "postgres:16-alpine"
+  database: "jobtracker"
+  username: "jobtracker"
+  storage: "10Gi"
+  # Autopilot enforces minimums of 250m CPU / 512Mi memory per pod.
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+
+# ----- Secrets -----
+# NEVER set real values here. Supply at deploy time:
+#   --set secrets.dbPassword=... --set secrets.jwtSecret=...
+# Rendering fails if either is empty, so a deploy cannot silently fall back
+# to the insecure defaults in application.yml.
+secrets:
+  create: true
+  dbPassword: ""
+  jwtSecret: ""
+
+# ----- Application settings -----
+app:
+  # Port your Spring Boot app listens on
+  port: 8080
+  # Spring profile to activate (dev, staging, prod)
+  springProfile: "prod"
+
+# ----- Service settings -----
+# LoadBalancer creates a public IP so you can access the app from the internet
+service:
+  type: LoadBalancer
+  port: 80 # External port (what users hit)
+  targetPort: 8080 # Internal port (matches app.port)
+
+# ----- Ingress (GCE HTTP(S) Load Balancer) -----
+# An ALTERNATIVE front door to the LoadBalancer Service above, not an
+# addition. Enabling this requires service.type: ClusterIP — the chart
+# refuses to render otherwise, since two load balancers would bill twice.
+#
+# Reserve the static IP first:
+#   gcloud compute addresses create java-app-ip --global
+ingress:
+  enabled: false
+  staticIpName: "java-app-ip"
+  # Leave empty to serve on the raw IP. Required for TLS.
+  host: ""
+  path: /
+  pathType: Prefix
+
+# ----- Google-managed TLS certificate -----
+# Needs a real domain in ingress.host with an A record pointing at the
+# static IP. Cannot be issued for a bare IP. Provisioning takes 15-60 min
+# after DNS resolves publicly.
+managedCert:
+  enabled: false
+  domains: []
+  # domains:
+  #   - jobtracker.example.com
+
+# ----- PodDisruptionBudget -----
+# Only meaningful at replicaCount >= 2; the template enforces that.
+pdb:
+  enabled: false
+  minAvailable: 1
+
+# ----- Resources -----
+# Autopilot enforces minimums: 250m CPU, 512Mi memory per pod
+# Keep tight to save cost
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "500m"
+    memory: "1Gi"
+
+# ----- Health probes -----
+# Spring Boot Actuator exposes /actuator/health
+probes:
+  liveness:
+    path: /actuator/health/liveness
+    initialDelaySeconds: 60 # Wait 60s before first check (JVM startup)
+    periodSeconds: 10
+  readiness:
+    path: /actuator/health/readiness
+    initialDelaySeconds: 30
+    periodSeconds: 5
+
+# ----- Environment variables -----
+# Extra env vars injected into the container
+# env:
+#   - name: SPRING_PROFILES_ACTIVE
+#     value: "prod"
+#   - name: SERVER_PORT
+#     value: "8080"
+
+# ----- ConfigMap data -----
+# Non-sensitive configuration injected as environment variables.
+# For SECRETS (passwords, keys) — use Secret Manager in Stage 2, NOT here.
+config:
+  SPRING_PROFILES_ACTIVE: "prod"
+  SERVER_PORT: "8080"
+  # Resolves to the headless postgres Service in this namespace.
+  DB_URL: "jdbc:postgresql://java-app-postgres:5432/jobtracker"
+  DB_USERNAME: "jobtracker"
+  LOGGING_LEVEL_ROOT: "INFO"
+  LOGGING_LEVEL_ORG_SPRINGFRAMEWORK: "INFO"
+  # Actuator — expose only health endpoint publicly
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
